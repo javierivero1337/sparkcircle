@@ -314,7 +314,7 @@ const CreateRoom = () => {
           {/* Footer */}
           <div className="text-center mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-gray-200">
             <p className="text-gray-600 text-sm mb-2" style={{ fontFamily: 'Inter, sans-serif' }}>
-              👋🏻 hello@sparkcircle.com
+              👋🏻 hello@moodhself.io
             </p>
             <p className="text-gray-400 text-xs" style={{ fontFamily: 'Inter, sans-serif' }}>
               © 2025 SparkCircle. All rights reserved.
