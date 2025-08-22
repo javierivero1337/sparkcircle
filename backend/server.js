@@ -5,7 +5,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
+// const mongoose = require('mongoose'); // No longer needed - using in-memory store
 
 // Import routes and socket handlers (we'll create these next)
 const sessionRoutes = require('./routes/sessions');
@@ -14,18 +14,32 @@ const socketHandler = require('./socket/socketHandler');
 const app = express();
 const server = http.createServer(app);
 
-// Socket.io setup with CORS
+// Socket.io setup with CORS - handle multiple origins for production
+const allowedOrigins = process.env.CLIENT_URL ? 
+  process.env.CLIENT_URL.split(',').map(url => url.trim()) : 
+  ['http://localhost:3000'];
+
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 app.use(express.json());
@@ -37,13 +51,9 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sparkcircle', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB connected successfully'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+// Using in-memory session store instead of MongoDB
+const sessionStore = require('./services/sessionStore');
+console.log('✅ In-memory session store initialized');
 
 // Routes
 app.use('/api/sessions', sessionRoutes);
@@ -53,7 +63,9 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'SparkCircle backend is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    activeSessions: sessionStore.getSessionCount(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 

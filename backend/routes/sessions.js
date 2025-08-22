@@ -1,48 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { nanoid } = require('nanoid');
-const Session = require('../models/Session');
-
-// Generate a unique room code
-const generateRoomCode = () => {
-  // Generate a 6-character uppercase code
-  return nanoid(6).toUpperCase().replace(/[0O1Il]/g, 'X'); // Replace confusing characters
-};
+const sessionStore = require('../services/sessionStore');
 
 // Create a new session
 router.post('/create', async (req, res) => {
   try {
     const { hostName, settings = {} } = req.body;
     
-    // Generate unique room code
-    let roomCode;
-    let isUnique = false;
-    
-    while (!isUnique) {
-      roomCode = generateRoomCode();
-      const existing = await Session.findOne({ roomCode });
-      if (!existing) isUnique = true;
-    }
-    
-    // Create new session
-    const hostParticipantId = nanoid();
-    const session = new Session({
-      roomCode,
-      hostId: hostParticipantId, // Host ID is same as their participant ID
-      participants: [{
-        id: hostParticipantId,
-        name: hostName || 'Host'
-      }],
-      settings: {
-        themes: settings.themes || ['dreams', 'values', 'growth', 'quirks', 'connections', 'curiosities'],
-        mode: settings.mode || 'guided',
-        maxParticipants: settings.maxParticipants || 20,
-        rounds: settings.rounds || 5,
-        turnTimerSeconds: settings.turnTimerSeconds || 60
-      }
+    // Create new session using in-memory store
+    const { session, hostParticipantId } = await sessionStore.create({
+      hostName,
+      settings
     });
-    
-    await session.save();
     
     res.json({
       success: true,
@@ -66,15 +36,19 @@ router.post('/join', async (req, res) => {
     const { roomCode, participantName } = req.body;
     
     // Find session
-    const session = await Session.findOne({ 
-      roomCode: roomCode.toUpperCase(),
-      status: { $ne: 'ended' }
-    });
+    const session = await sessionStore.findByRoomCode(roomCode);
     
     if (!session) {
       return res.status(404).json({ 
         success: false, 
-        error: 'Session not found or has ended' 
+        error: 'Session not found' 
+      });
+    }
+    
+    if (session.status === 'ended') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'This session has ended' 
       });
     }
     
@@ -90,10 +64,12 @@ router.post('/join', async (req, res) => {
     const participantId = nanoid();
     session.participants.push({
       id: participantId,
-      name: participantName || 'Guest'
+      name: participantName || 'Guest',
+      joinedAt: new Date()
     });
     
-    await session.save();
+    // Update session in store
+    await sessionStore.update(roomCode, session);
     
     res.json({
       success: true,
@@ -115,9 +91,7 @@ router.post('/join', async (req, res) => {
 // Get session details
 router.get('/:roomCode', async (req, res) => {
   try {
-    const session = await Session.findOne({ 
-      roomCode: req.params.roomCode.toUpperCase() 
-    });
+    const session = await sessionStore.findByRoomCode(req.params.roomCode);
     
     if (!session) {
       return res.status(404).json({ 
@@ -148,4 +122,43 @@ router.get('/:roomCode', async (req, res) => {
   }
 });
 
-module.exports = router; 
+// Update session settings (host only)
+router.put('/:roomCode/settings', async (req, res) => {
+  try {
+    const { settings, hostId } = req.body;
+    
+    const session = await sessionStore.findByRoomCode(req.params.roomCode);
+    
+    if (!session) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Session not found' 
+      });
+    }
+    
+    // Verify host
+    if (session.hostId !== hostId) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Only the host can update settings' 
+      });
+    }
+    
+    // Update settings
+    session.settings = { ...session.settings, ...settings };
+    await sessionStore.update(req.params.roomCode, session);
+    
+    res.json({
+      success: true,
+      settings: session.settings
+    });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to update settings' 
+    });
+  }
+});
+
+module.exports = router;

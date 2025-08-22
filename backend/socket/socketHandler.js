@@ -1,4 +1,4 @@
-const Session = require('../models/Session');
+const sessionStore = require('../services/sessionStore');
 const { getQuestionsByThemes, getRandomQuestion } = require('../data/questions');
 
 module.exports = (io, socket) => {
@@ -7,7 +7,7 @@ module.exports = (io, socket) => {
     const { roomCode, participantId } = data;
     
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session) {
         socket.emit('error', { message: 'Session not found' });
         return;
@@ -46,7 +46,7 @@ module.exports = (io, socket) => {
     const { roomCode, hostId } = data;
     
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session || session.hostId !== hostId) {
         socket.emit('error', { message: 'Unauthorized' });
         return;
@@ -60,7 +60,7 @@ module.exports = (io, socket) => {
       session.gameState.turnOrder = turnOrder;
       session.gameState.currentTurnIndex = 0;
       session.gameState.currentRound = 1;
-      await session.save();
+      await sessionStore.update(roomCode, session);
       
       // Notify all participants
       io.to(roomCode).emit('session-started', {
@@ -88,7 +88,7 @@ module.exports = (io, socket) => {
     const { roomCode, participantId, theme } = data;
     
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session) {
         socket.emit('error', { message: 'Session not found' });
         return;
@@ -118,7 +118,7 @@ module.exports = (io, socket) => {
       session.usedQuestions.push(selectedQuestion.id);
       session.gameState.currentPlayerThemeSelection = theme;
       session.gameState.turnStartedAt = new Date();
-      await session.save();
+      await sessionStore.update(roomCode, session);
       
       // Broadcast the new question to all participants
       io.to(roomCode).emit('new-question', {
@@ -139,7 +139,7 @@ module.exports = (io, socket) => {
     const { roomCode, participantId } = data;
     
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session) {
         socket.emit('error', { message: 'Session not found' });
         return;
@@ -164,7 +164,7 @@ module.exports = (io, socket) => {
         // Check if game is complete
         if (nextRound > session.settings.rounds) {
           session.status = 'ended';
-          await session.save();
+          await sessionStore.update(roomCode, session);
           
           io.to(roomCode).emit('session-ended', {
             finalRound: session.gameState.currentRound,
@@ -182,7 +182,7 @@ module.exports = (io, socket) => {
       session.gameState.currentPlayerThemeSelection = null;
       session.gameState.turnStartedAt = null;
       session.currentQuestion = null;
-      await session.save();
+      await sessionStore.update(roomCode, session);
       
       // Notify all participants of the new turn
       const nextPlayerId = session.gameState.turnOrder[nextTurnIndex];
@@ -205,7 +205,7 @@ module.exports = (io, socket) => {
     const { roomCode, hostId } = data;
 
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session) {
         socket.emit('error', { message: 'Session not found' });
         return;
@@ -229,7 +229,7 @@ module.exports = (io, socket) => {
         // Check if game is complete
         if (nextRound > session.settings.rounds) {
           session.status = 'ended';
-          await session.save();
+          await sessionStore.update(roomCode, session);
 
           io.to(roomCode).emit('session-ended', {
             finalRound: session.gameState.currentRound,
@@ -247,7 +247,7 @@ module.exports = (io, socket) => {
       session.gameState.currentPlayerThemeSelection = null;
       session.gameState.turnStartedAt = null;
       session.currentQuestion = null;
-      await session.save();
+      await sessionStore.update(roomCode, session);
 
       // Notify all participants of the new turn
       const nextPlayerId = session.gameState.turnOrder[nextTurnIndex];
@@ -270,7 +270,7 @@ module.exports = (io, socket) => {
     const { roomCode, hostId } = data;
     
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session) {
         socket.emit('error', { message: 'Session not found' });
         return;
@@ -294,7 +294,7 @@ module.exports = (io, socket) => {
       // Update session with new question
       session.currentQuestion = nextQuestion;
       session.usedQuestions.push(nextQuestion.id);
-      await session.save();
+      await sessionStore.update(roomCode, session);
       
       // Send new question to all participants
       io.to(roomCode).emit('new-question', {
@@ -313,7 +313,7 @@ module.exports = (io, socket) => {
     const { roomCode, hostId } = data;
     
     try {
-      const session = await Session.findOne({ roomCode });
+      const session = await sessionStore.findByRoomCode(roomCode);
       if (!session || session.hostId !== hostId) {
         socket.emit('error', { message: 'Unauthorized' });
         return;
@@ -321,7 +321,7 @@ module.exports = (io, socket) => {
       
       // Update session status
       session.status = 'ended';
-      await session.save();
+      await sessionStore.update(roomCode, session);
       
       // Notify all participants
       io.to(roomCode).emit('session-ended');
@@ -340,7 +340,7 @@ module.exports = (io, socket) => {
   socket.on('disconnect', async () => {
     if (socket.roomCode && socket.participantId) {
       try {
-        const session = await Session.findOne({ roomCode: socket.roomCode });
+        const session = await sessionStore.findByRoomCode(socket.roomCode);
         if (session) {
           // Notify others that someone left
           socket.to(socket.roomCode).emit('participant-left', {

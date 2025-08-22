@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3001';
+// Dynamic socket URL based on environment
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 
+  (window.location.hostname === 'localhost' ? 
+    'http://localhost:3001' : 
+    window.location.origin.replace(/:\d+/, ':3001')); // Use same host with backend port
 
 const SocketContext = createContext(null);
 

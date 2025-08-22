@@ -1,0 +1,34 @@
+services:
+  # Backend service
+  - type: web
+    name: sparkcircle-backend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: sparkcircle-frontend
+          property: url
+
+  # Frontend service  
+  - type: web
+    name: sparkcircle-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_SOCKET_URL
+        fromService:
+          type: web
+          name: sparkcircle-backend
+          property: url
